@@ -45,6 +45,7 @@ const formatTime = (seconds: number) => {
 export default function App() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const autoplayRef = useRef(false);
+
   const [trackIndex, setTrackIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -52,7 +53,28 @@ export default function App() {
   const [volume, setVolume] = useState(0.7);
   const [error, setError] = useState("");
 
+  const [favorites, setFavorites] = useState<string[]>(() => {
+    try {
+      const saved: unknown = JSON.parse(
+        localStorage.getItem("loud-favorites") || "[]"
+      );
+      return Array.isArray(saved)
+        ? saved.filter((item): item is string => typeof item === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+
   const currentTrack = tracks[trackIndex];
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("loud-favorites", JSON.stringify(favorites));
+    } catch {
+      // Favorites remain available for the current session.
+    }
+  }, [favorites]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
@@ -63,9 +85,13 @@ export default function App() {
     if (!audio || !autoplayRef.current) return;
 
     autoplayRef.current = false;
-    void audio.play().then(() => setPlaying(true)).catch(() => {
+    audio.load();
+
+    void audio.play().then(() => {
+      setPlaying(true);
+    }).catch(() => {
       setPlaying(false);
-      setError("Playback failed. Check that the media file is playable.");
+      setError("Playback failed. Check the media file and try again.");
     });
   }, [trackIndex]);
 
@@ -92,10 +118,10 @@ export default function App() {
   }
 
   function selectTrack(index: number) {
-    const nextIndex = (index % tracks.length + tracks.length) % tracks.length;
+    const nextIndex = (index + tracks.length) % tracks.length;
 
     if (nextIndex === trackIndex) {
-      if (!playing) void togglePlay();
+      void togglePlay();
       return;
     }
 
@@ -105,6 +131,14 @@ export default function App() {
     setTime(0);
     setDuration(0);
     setError("");
+  }
+
+  function toggleFavorite(src: string) {
+    setFavorites((saved) =>
+      saved.includes(src)
+        ? saved.filter((item) => item !== src)
+        : [...saved, src]
+    );
   }
 
   function seek(value: number) {
@@ -136,7 +170,7 @@ export default function App() {
         }}
         onError={() => {
           setPlaying(false);
-          setError(`Couldn't load ${currentTrack.title}. Check its file path and format.`);
+          setError(`Couldn't load ${currentTrack.title}. Check its file and format.`);
         }}
       />
 
@@ -203,9 +237,11 @@ export default function App() {
           <a href="#" className="text-2xl font-black tracking-tighter md:hidden">
             LOUD<span className="text-[#D7FF38]">.</span>
           </a>
+
           <p className="hidden text-sm text-white/40 md:block">
             YOUR SOUND. YOUR RULES.
           </p>
+
           <button className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs text-white/70 hover:border-[#D7FF38]/50 sm:px-4 sm:text-sm">
             <Search size={16} />
             <span>Find your frequency</span>
@@ -221,7 +257,9 @@ export default function App() {
             <button
               key={label}
               className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm ${
-                i === 0 ? "bg-[#D7FF38] font-bold text-black" : "bg-white/5 text-white/65"
+                i === 0
+                  ? "bg-[#D7FF38] font-bold text-black"
+                  : "bg-white/5 text-white/65"
               }`}
             >
               <Icon size={16} />
@@ -252,7 +290,9 @@ export default function App() {
               onClick={() => void togglePlay()}
               className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#D7FF38] px-6 py-3 text-sm font-black text-black transition hover:scale-[1.02]"
             >
-              {playing ? <Pause size={17} /> : <Play size={17} fill="currentColor" />}
+              {playing
+                ? <Pause size={17} />
+                : <Play size={17} fill="currentColor" />}
               {playing ? "Pause your track" : "Play your track"}
             </button>
           </div>
@@ -288,12 +328,11 @@ export default function App() {
                   className="mb-4 flex aspect-square items-center justify-center overflow-hidden rounded-xl"
                   style={{ backgroundColor: `${mix.color}18` }}
                 >
-                  {i % 2 === 0 ? (
-                    <AudioLines size={48} strokeWidth={1.3} style={{ color: mix.color }} />
-                  ) : (
-                    <Music2 size={48} strokeWidth={1.3} style={{ color: mix.color }} />
-                  )}
+                  {i % 2 === 0
+                    ? <AudioLines size={48} strokeWidth={1.3} style={{ color: mix.color }} />
+                    : <Music2 size={48} strokeWidth={1.3} style={{ color: mix.color }} />}
                 </div>
+
                 <h3 className="truncate font-bold">{mix.title}</h3>
                 <p className="mt-1 text-xs text-white/40">{mix.subtitle}</p>
               </article>
@@ -301,7 +340,7 @@ export default function App() {
           </div>
         </section>
 
-        <section>
+        <section id="queue" className="mb-10 md:mb-12">
           <div className="mb-5">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[#8B5CF6]">
               Up next
@@ -315,40 +354,114 @@ export default function App() {
           </div>
 
           <div className="space-y-2">
-            {tracks.map((track, index) => (
-              <button
-                key={track.src}
-                onClick={() => selectTrack(index)}
-                className={`flex w-full min-w-0 items-center gap-3 rounded-xl border p-3 text-left transition sm:gap-4 ${
-                  index === trackIndex
-                    ? "border-[#D7FF38]/40 bg-[#D7FF38]/5"
-                    : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
-                }`}
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#D7FF38]">
-                  {index === trackIndex && playing ? (
-                    <AudioLines size={21} />
-                  ) : (
-                    <Music2 size={21} />
-                  )}
+            {tracks.map((track, index) => {
+              const isFavorite = favorites.includes(track.src);
+              const isCurrent = index === trackIndex;
+
+              return (
+                <div
+                  key={track.src}
+                  className={`flex items-center gap-2 rounded-xl border p-3 ${
+                    isCurrent
+                      ? "border-[#D7FF38]/40 bg-[#D7FF38]/5"
+                      : "border-white/10 bg-white/[0.02]"
+                  }`}
+                >
+                  <button
+                    onClick={() => selectTrack(index)}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <Music2 className="shrink-0 text-[#D7FF38]" size={21} />
+
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold">
+                        {track.title}
+                      </span>
+                      <span className="mt-1 block truncate text-xs text-white/40">
+                        {track.artist}
+                      </span>
+                    </span>
+
+                    <span className="hidden shrink-0 text-[10px] text-white/40 sm:block">
+                      {isCurrent ? (playing ? "Playing" : "Selected") : "Play"}
+                    </span>
+                  </button>
+
+                  <button
+                    aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                    aria-pressed={isFavorite}
+                    onClick={() => toggleFavorite(track.src)}
+                    className="shrink-0 p-2"
+                  >
+                    <Heart
+                      size={19}
+                      fill={isFavorite ? "currentColor" : "none"}
+                      className={
+                        isFavorite
+                          ? "text-[#FF4FA3]"
+                          : "text-white/40 hover:text-[#FF4FA3]"
+                      }
+                    />
+                  </button>
                 </div>
+              );
+            })}
+          </div>
+        </section>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold">{track.title}</p>
-                  <p className="mt-1 truncate text-xs text-white/40">{track.artist}</p>
-                </div>
+        {favorites.length > 0 && (
+          <section id="favorites" className="mb-10">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[#FF4FA3]">
+              Saved by you
+            </p>
+            <h2 className="mb-5 text-2xl font-black sm:text-3xl">
+              Liked tracks
+            </h2>
 
-                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-white/40">
-                  {index === trackIndex ? (playing ? "Playing" : "Selected") : "Play"}
-                </span>
+            <div className="space-y-2">
+              {tracks
+                .filter((track) => favorites.includes(track.src))
+                .map((track) => (
+                  <button
+                    key={track.src}
+                    onClick={() =>
+                      selectTrack(tracks.findIndex((item) => item.src === track.src))
+                    }
+                    className="flex w-full items-center gap-3 rounded-xl border border-white/10 p-3 text-left hover:bg-white/5"
+                  >
+                    <Heart
+                      size={18}
+                      fill="currentColor"
+                      className="shrink-0 text-[#FF4FA3]"
+                    />
 
-                {index === trackIndex && playing ? (
-                  <Pause size={17} className="shrink-0 text-[#D7FF38]" />
-                ) : (
-                  <Play size={17} className="shrink-0 text-white/50" />
-                )}
-              </button>
-            ))}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-bold">
+                        {track.title}
+                      </span>
+                      <span className="block text-xs text-white/40">
+                        {track.artist}
+                      </span>
+                    </span>
+
+                    <Play size={17} className="shrink-0 text-white/50" />
+                  </button>
+                ))}
+            </div>
+          </section>
+        )}
+
+        <section className="rounded-2xl border border-dashed border-white/15 p-5 sm:p-8">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl bg-[#8B5CF6]/15 p-3 text-[#8B5CF6]">
+              <Library size={23} />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold">Your library, your universe.</h2>
+              <p className="mt-2 max-w-lg text-sm leading-6 text-white/45">
+                Your music library is just getting started. More tracks and playlists are coming next.
+              </p>
+            </div>
           </div>
         </section>
       </main>
@@ -359,11 +472,32 @@ export default function App() {
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D7FF38]/10 text-[#D7FF38] sm:h-11 sm:w-11">
               <Music2 size={21} />
             </div>
+
             <div className="min-w-0">
-              <p className="truncate text-xs font-bold sm:text-sm">{currentTrack.title}</p>
-              <p className="truncate text-[10px] text-white/40 sm:text-xs">{currentTrack.artist}</p>
+              <p className="truncate text-xs font-bold sm:text-sm">
+                {currentTrack.title}
+              </p>
+              <p className="truncate text-[10px] text-white/40 sm:text-xs">
+                {currentTrack.artist}
+              </p>
             </div>
-            <Heart size={17} className="hidden text-white/40 lg:block" />
+
+            <button
+              aria-label={favorites.includes(currentTrack.src) ? "Unlike track" : "Like track"}
+              aria-pressed={favorites.includes(currentTrack.src)}
+              onClick={() => toggleFavorite(currentTrack.src)}
+              className="hidden sm:block"
+            >
+              <Heart
+                size={17}
+                fill={favorites.includes(currentTrack.src) ? "currentColor" : "none"}
+                className={
+                  favorites.includes(currentTrack.src)
+                    ? "text-[#FF4FA3]"
+                    : "text-white/40 hover:text-[#FF4FA3]"
+                }
+              />
+            </button>
           </div>
 
           <div className="flex shrink-0 items-center gap-1 sm:gap-3">
@@ -380,7 +514,9 @@ export default function App() {
               onClick={() => void togglePlay()}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-[#D7FF38] text-black sm:h-10 sm:w-10"
             >
-              {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
+              {playing
+                ? <Pause size={17} fill="currentColor" />
+                : <Play size={17} fill="currentColor" />}
             </button>
 
             <button
@@ -409,6 +545,7 @@ export default function App() {
 
         <div className="mx-auto mt-3 flex max-w-7xl items-center gap-3 text-[10px] text-white/40">
           <span>{formatTime(time)}</span>
+
           <input
             aria-label="Track progress"
             type="range"
@@ -419,6 +556,7 @@ export default function App() {
             onChange={(e) => seek(Number(e.target.value))}
             className="h-1 min-w-0 flex-1 cursor-pointer accent-[#D7FF38]"
           />
+
           <span>{formatTime(duration)}</span>
         </div>
 
