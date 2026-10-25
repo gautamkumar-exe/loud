@@ -45,6 +45,15 @@ export default function App() {
   const [volume, setVolume] = useState(0.7);
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [playlists, setPlaylists] = useState<string[]>(() => {
+  try {
+    return JSON.parse(
+      localStorage.getItem("loud-playlists") || '["Midnight files","Bass culture"]'
+    );
+  } catch {
+    return ["Midnight files", "Bass culture"];
+  }
+});
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
@@ -67,6 +76,9 @@ export default function App() {
       .toLowerCase()
       .includes(searchQuery.trim().toLowerCase())
   );
+  useEffect(() => {
+  localStorage.setItem("loud-playlists", JSON.stringify(playlists));
+}, [playlists]);
 
   useEffect(() => {
     try {
@@ -211,12 +223,21 @@ export default function App() {
         <div className="mt-10">
           <div className="mb-4 flex items-center justify-between">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/35">Your playlists</p>
-            <button aria-label="Create playlist" className="text-white/50 hover:text-[#D7FF38]">
+            <button
+              aria-label="Create playlist"
+              onClick={() => {
+                const name = window.prompt("Enter playlist name:")?.trim();
+                if (name && !playlists.some((p) => p.toLowerCase() === name.toLowerCase())) {
+                  setPlaylists((prev) => [...prev, name]);
+                }
+              }}
+              className="text-white/50 hover:text-[#D7FF38]"
+            >
               <Plus size={18} />
             </button>
           </div>
 
-          {["Liked tracks", "Midnight files", "Bass culture"].map((name) => (
+          {["Liked tracks", ...playlists].map((name) => (
             <div key={name} className="flex items-center gap-3 py-3 text-sm text-white/55">
               <ListMusic size={17} />
               {name}
