@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 import {
   AudioLines,
@@ -11,8 +12,23 @@ import {
   Play,
   Plus,
   Search,
+  SkipBack,
+  SkipForward,
   Volume2,
 } from "lucide-react";
+
+const tracks = [
+  {
+    title: "Your First Track",
+    artist: "LOUD. Library",
+    src: "/audio/sample.mp4",
+  },
+  {
+    title: "Second Track",
+    artist: "LOUD. Library",
+    src: "/audio/second.mp4",
+  },
+];
 
 const mixes = [
   { title: "Night Drive", subtitle: "Late-night frequencies", color: "#8B5CF6" },
@@ -28,15 +44,30 @@ const formatTime = (seconds: number) => {
 
 export default function App() {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const autoplayRef = useRef(false);
+  const [trackIndex, setTrackIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.7);
   const [error, setError] = useState("");
 
+  const currentTrack = tracks[trackIndex];
+
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !autoplayRef.current) return;
+
+    autoplayRef.current = false;
+    void audio.play().then(() => setPlaying(true)).catch(() => {
+      setPlaying(false);
+      setError("Playback failed. Check that the media file is playable.");
+    });
+  }, [trackIndex]);
 
   async function togglePlay() {
     const audio = audioRef.current;
@@ -45,17 +76,35 @@ export default function App() {
     setError("");
 
     if (audio.paused) {
+      if (audio.ended) audio.currentTime = 0;
+
       try {
         await audio.play();
         setPlaying(true);
       } catch {
         setPlaying(false);
-        setError("Playback failed. Check that sample.mp3 exists.");
+        setError("Playback failed. Check the media file and try again.");
       }
     } else {
       audio.pause();
       setPlaying(false);
     }
+  }
+
+  function selectTrack(index: number) {
+    const nextIndex = (index % tracks.length + tracks.length) % tracks.length;
+
+    if (nextIndex === trackIndex) {
+      if (!playing) void togglePlay();
+      return;
+    }
+
+    autoplayRef.current = true;
+    setTrackIndex(nextIndex);
+    setPlaying(true);
+    setTime(0);
+    setDuration(0);
+    setError("");
   }
 
   function seek(value: number) {
@@ -70,17 +119,24 @@ export default function App() {
     <div className="min-h-screen bg-[#0a0a0a] text-[#f5f0e8]">
       <audio
         ref={audioRef}
-        src="/audio/sample.mp4"
+        src={currentTrack.src}
         preload="metadata"
         onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
+        onLoadedMetadata={(e) => {
+          setDuration(e.currentTarget.duration || 0);
+          e.currentTarget.volume = volume;
+        }}
         onEnded={() => {
-          setPlaying(false);
-          setTime(0);
+          if (trackIndex < tracks.length - 1) {
+            selectTrack(trackIndex + 1);
+          } else {
+            setPlaying(false);
+            setTime(0);
+          }
         }}
         onError={() => {
           setPlaying(false);
-          setError("Couldn't load audio. Check public/audio/sample.mp4.");
+          setError(`Couldn't load ${currentTrack.title}. Check its file path and format.`);
         }}
       />
 
@@ -142,7 +198,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="px-4 pb-36 pt-6 sm:px-6 md:ml-60 md:px-10 md:pt-10">
+      <main className="px-4 pb-40 pt-6 sm:px-6 md:ml-60 md:px-10 md:pt-10">
         <header className="mb-8 flex items-center justify-between gap-3">
           <a href="#" className="text-2xl font-black tracking-tighter md:hidden">
             LOUD<span className="text-[#D7FF38]">.</span>
@@ -197,7 +253,7 @@ export default function App() {
               className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#D7FF38] px-6 py-3 text-sm font-black text-black transition hover:scale-[1.02]"
             >
               {playing ? <Pause size={17} /> : <Play size={17} fill="currentColor" />}
-              {playing ? "Pause your track" : "Play your first track"}
+              {playing ? "Pause your track" : "Play your track"}
             </button>
           </div>
 
@@ -245,43 +301,98 @@ export default function App() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-dashed border-white/15 p-5 sm:p-8">
-          <div className="flex items-start gap-4">
-            <div className="rounded-xl bg-[#8B5CF6]/15 p-3 text-[#8B5CF6]">
-              <Library size={23} />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold">Your library, your universe.</h2>
-              <p className="mt-2 max-w-lg text-sm leading-6 text-white/45">
-                Next up: connect your music library and build playlists for your tracks.
-              </p>
-            </div>
+        <section>
+          <div className="mb-5">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.25em] text-[#8B5CF6]">
+              Up next
+            </p>
+            <h2 className="text-2xl font-black tracking-tight sm:text-3xl">
+              Your queue
+            </h2>
+            <p className="mt-2 text-sm text-white/40">
+              {tracks.length} tracks in your local library
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            {tracks.map((track, index) => (
+              <button
+                key={track.src}
+                onClick={() => selectTrack(index)}
+                className={`flex w-full min-w-0 items-center gap-3 rounded-xl border p-3 text-left transition sm:gap-4 ${
+                  index === trackIndex
+                    ? "border-[#D7FF38]/40 bg-[#D7FF38]/5"
+                    : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"
+                }`}
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#D7FF38]">
+                  {index === trackIndex && playing ? (
+                    <AudioLines size={21} />
+                  ) : (
+                    <Music2 size={21} />
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">{track.title}</p>
+                  <p className="mt-1 truncate text-xs text-white/40">{track.artist}</p>
+                </div>
+
+                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                  {index === trackIndex ? (playing ? "Playing" : "Selected") : "Play"}
+                </span>
+
+                {index === trackIndex && playing ? (
+                  <Pause size={17} className="shrink-0 text-[#D7FF38]" />
+                ) : (
+                  <Play size={17} className="shrink-0 text-white/50" />
+                )}
+              </button>
+            ))}
           </div>
         </section>
       </main>
 
-      <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-[#101010]/95 px-4 py-3 backdrop-blur-xl sm:px-6 md:left-60 md:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+      <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-[#101010]/95 px-3 py-3 backdrop-blur-xl sm:px-6 md:left-60 md:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D7FF38]/10 text-[#D7FF38] sm:h-11 sm:w-11">
               <Music2 size={21} />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold">Your First Track</p>
-              <p className="truncate text-xs text-white/40">LOUD. Library</p>
+              <p className="truncate text-xs font-bold sm:text-sm">{currentTrack.title}</p>
+              <p className="truncate text-[10px] text-white/40 sm:text-xs">{currentTrack.artist}</p>
             </div>
-            <Heart size={17} className="hidden text-white/40 sm:block" />
+            <Heart size={17} className="hidden text-white/40 lg:block" />
           </div>
 
-          <button
-            aria-label={playing ? "Pause" : "Play"}
-            onClick={() => void togglePlay()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#D7FF38] text-black"
-          >
-            {playing ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-          </button>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-3">
+            <button
+              aria-label="Previous track"
+              onClick={() => selectTrack(trackIndex - 1)}
+              className="flex h-8 w-8 items-center justify-center text-white/60 hover:text-white sm:h-9 sm:w-9"
+            >
+              <SkipBack size={17} />
+            </button>
 
-          <div className="hidden w-28 items-center gap-2 text-white/45 lg:flex">
+            <button
+              aria-label={playing ? "Pause" : "Play"}
+              onClick={() => void togglePlay()}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#D7FF38] text-black sm:h-10 sm:w-10"
+            >
+              {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
+            </button>
+
+            <button
+              aria-label="Next track"
+              onClick={() => selectTrack(trackIndex + 1)}
+              className="flex h-8 w-8 items-center justify-center text-white/60 hover:text-white sm:h-9 sm:w-9"
+            >
+              <SkipForward size={17} />
+            </button>
+          </div>
+
+          <div className="hidden w-24 items-center gap-2 text-white/45 sm:flex lg:w-28">
             <Volume2 size={18} />
             <input
               aria-label="Volume"
